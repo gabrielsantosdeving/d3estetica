@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/frontend/assets/d3logohead.png" type="image/x-icon" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="/backend/admin/dashboard.css">
+    <title>D3 Estética?login</title>
+    <style>
+        /* Estilos específicos para a página de login - Estilo Dashboard */
+        /* Garantir que as variáveis CSS estejam definidas mesmo se dashboard.css não carregar */
+        :root {
+            --bg-primary: #f4f7f5;
+            --bg-secondary: #f0fdf4;
+            --bg-tertiary: #e8f5ec;
+            --bg-card: #ffffff;
+            --bg-hover: #d9f2df;
+            --text-primary: #1f2933;
+            --text-secondary: #4b5563;
+            --text-muted: #9ca3af;
+            --accent-blue: #3a3a3a;
+            --accent-green: #3a3a3a;
+            --border-color: #d1d5db;
+            --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08);
+            --shadow-md: 0 4px 6px rgba(15, 23, 42, 0.12);
+            --shadow-lg: 0 10px 20px rgba(15, 23, 42, 0.16);
+            --transition: all 0.3s ease;
+            --error: #ef4444;
+        }
+
+        body {
+            background-image: url(/frontend/assets/vellure.jpg);
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            overflow: hidden;
+        }
+
+
+        .login-page-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding: 0;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                transform: scale(1) rotate(0deg);
+            }
+
+            50% {
+                transform: scale(1.1) rotate(180deg);
+            }
+        }
+
+        .login-box {
+            width: 100%;
+            max-width: 480px;
+            height: 100vh;
+            background: var(--bg-card, #ffffff);
+            border: 1px solid var(--border-color, #d1d5db);
+            padding: 3rem;
+            box-shadow: var(--shadow-lg, 0 10px 20px rgba(15, 23, 42, 0.16));
+            position: relative;
+            z-index: 1;
+            animation: slideInUp 0.5s ease-out;
+        }
+
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+
+        .login-logo {
+            margin-bottom: 1.5rem;
+        }
+
+        .login-logo img {
+            width: 180px;
+            height: auto;
+            border-radius: 12px;
+        }
+
+        .login-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--text-primary, #1f2933);
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, var(--accent-blue, #9c9661), var(--accent-green, #b8b65d));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .login-header p {
+            color: var(--text-secondary, #4b5563);
+            font-size: 1rem;
+        }
+
+        .login-header span {
+            text-decoration: underline;
+        }
+
+        .login-form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .login-form-group label {
+            display: block;
+            margin-bottom: 0.75rem;
+            color: #9c9661;
+            font-weight: 600;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .login-form-group label i {
+            color: #9c9661  ;
+            font-size: 1rem;
+        }
+
+        .login-input-wrapper {
+            position: relative;
+        }
+
+        .login-input-wrapper i {
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted, #9ca3af);
+            font-size: 1.1rem;
+            z-index: 1;
+        }
+
+        .login-input-wrapper input {
+            width: 100%;
+            padding: 0.875rem 1rem 0.875rem 3rem;
+            background: white;
+            border: 1px solid var(--border-color, #d1d5db);
+            border-radius: 10px;
+            color: var(--text-primary, #1f2933);
+            font-size: 0.95rem;
+            transition: var(--transition, all 0.3s ease);
+            font-family: inherit;
+        }
+
+
+
+        .login-input-wrapper input::placeholder {
+            color: var(--text-muted, #9ca3af);
+        }
+
+        .login-toggle-password {
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: var(--text-muted, #9ca3af);
+            cursor: pointer;
+            font-size: 1.1rem;
+            padding: 0.5rem;
+            z-index: 1;
+            border-radius: 6px;
+            transition: var(--transition, all 0.3s ease);
+        }
+
+        .login-toggle-password:hover {
+            color: var(--accent-blue, #999454);
+            background: var(--bg-hover, #d9f2df);
+        }
+
+        .login-checkbox-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .login-checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: var(--text-secondary, #4b5563);
+            font-size: 0.9rem;
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 8px;
+            transition: var(--transition, all 0.3s ease);
+        }
+
+        .login-checkbox-label:hover {
+            background: white;
+        }
+
+        .login-checkbox-label input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: var(--accent-blue, #aaac65);
+        }
+
+        .login-btn {
+            width: 100%;
+            padding: 1rem;
+            background: #9c9661;
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition, all 0.3s ease);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            box-shadow: var(--shadow-sm, 0 1px 3px rgba(15, 23, 42, 0.08));
+        }
+
+        .login-btn:hover {
+            background: #7a7543;
+      
+        }
+
+        .login-btn:active {
+            transform: translateY(0);
+        }
+
+        .login-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .divisoria {
+            text-align: center;
+            margin: 1rem 0;
+
+        }
+
+        .divisoria p {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #525252;
+        }
+
+        .button-login {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+        }
+
+        .button-login img {
+            width: 1.3rem;
+            height: 1.3rem;
+            object-fit: cover;
+            border-radius: 50%;
+        }
+
+        .button-login a {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: rgb(65, 65, 65);
+            text-decoration: none;
+            font-size: 1.2rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: var(--transition, all 0.3s ease);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+        }
+
+        .login-footer {
+            text-align: center;
+            margin-top: 2rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border-color, #d1d5db);
+        }
+
+        .login-footer a {
+            color: var(--accent-blue, #3a3a3a);
+            text-decoration: none;
+            font-size: 0.9rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: var(--transition, all 0.3s ease);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+        }
+
+        .login-footer a:hover {
+            color: var(--accent-green, #16a34a);
+            background: var(--bg-hover, #d9f2df);
+        }
+
+
+        .login-alert-error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid var(--error, #ef4444);
+            color: var(--error, #ef4444);
+            padding: 1rem 1.25rem;
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+            display: none;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 0.9rem;
+            animation: shake 0.5s ease-in-out;
+        }
+
+        @keyframes shake {
+
+            0%,
+            100% {
+                transform: translateX(0);
+            }
+
+            25% {
+                transform: translateX(-10px);
+            }
+
+            75% {
+                transform: translateX(10px);
+            }
+        }
+
+        .login-alert-error.show {
+            display: flex;
+        }
+
+        .login-alert-error i {
+            font-size: 1.2rem;
+            flex-shrink: 0;
+        }
+
+        .cpf-mask {
+            text-transform: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="login-page-container">
+        <div class="login-box">
+            <div class="login-header">
+                <div class="login-logo">
+                    <img src="/frontend/assets/logod3.png" alt="">
+                </div>
+
+                <p>Faça login para acessar o sistema da sua Empresa, cuidamos de toda a estrutura e segurança do seu
+                    site, você tem o acesso <span>antecipado</span> parabéns</p>
+            </div>
+
+            <div id="errorMessage" class="login-alert-error">
+                <i class="bi bi-exclamation-triangle"></i>
+                <span id="errorText"></span>
+            </div>
+
+            <form id="loginForm">
+                <div class="login-form-group">
+                    <label for="email">
+                        <i class="bi bi-envelope"></i> E-mail Administrativo
+                    </label>
+                    <div class="login-input-wrapper">
+                        <i class="bi bi-envelope"></i>
+                        <input type="email" id="email" name="emai   l" placeholder="empresa@vellure.cloud" required
+                            autofocus>
+                    </div>
+                </div>
+
+                <div class="login-form-group">
+                    <label for="cpf">
+                        <i class="bi bi-person-badge"></i> CPF
+                    </label>
+                    <div class="login-input-wrapper">
+                        <i class="bi bi-person-badge"></i>
+                        <input type="text" id="cpf" name="cpf" placeholder="000.000.000-00" required maxlength="14"
+                            class="cpf-mask">
+                    </div>
+                </div>
+
+                <div class="login-form-group">
+                    <label for="password">
+                        <i class="bi bi-lock"></i> Senha
+                    </label>
+                    <div class="login-input-wrapper">
+                        <i class="bi bi-lock"></i>
+                        <input type="password" id="password" name="senha" placeholder="Digite sua senha" required>
+                        <button type="button" class="login-toggle-password" id="togglePassword">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="login-checkbox-group">
+                    <label class="login-checkbox-label">
+                        <input type="checkbox" id="remember" name="remember" value="1">
+                        <span>Lembrar-me (permanecer logado)</span>
+                    </label>
+                </div>
+
+                <button type="submit" class="login-btn" id="submitBtn">
+                    <span>Entrar</span>
+                    <i class="bi bi-arrow-right"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Máscara para CPF
+        document.getElementById('cpf').addEventListener('input', function (e) {
+            let value = e.target.value.replace(/\D/g, '');
+            if (value.length <= 11) {
+                value = value.replace(/(\d{3})(\d)/, '$1.$2');
+                value = value.replace(/(\d{3})(\d)/, '$1.$2');
+                value = value.replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+                e.target.value = value;
+            }
+        });
+
+        // Toggle de visibilidade de senha
+        const togglePassword = document.getElementById('togglePassword');
+        const passwordInput = document.getElementById('password');
+
+        togglePassword.addEventListener('click', () => {
+            const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+            passwordInput.setAttribute('type', type);
+
+            const icon = togglePassword.querySelector('i');
+            icon.className = type === 'password' ? 'bi bi-eye' : 'bi bi-eye-slash';
+        });
+
+        // Processar login
+        const loginForm = document.getElementById('loginForm');
+        const errorMessage = document.getElementById('errorMessage');
+        const errorText = document.getElementById('errorText');
+        const submitBtn = document.getElementById('submitBtn');
+
+        loginForm.addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            const email = document.getElementById('email').value.trim();
+            const cpf = document.getElementById('cpf').value.trim().replace(/\D/g, '');
+            const senha = document.getElementById('password').value.trim();
+            const remember = document.getElementById('remember').checked;
+
+            // Validar campos
+            if (!email || !cpf || !senha) {
+                showError('Preencha todos os campos obrigatórios');
+                return;
+            }
+
+            // Validar CPF (deve ter 11 dígitos)
+            if (cpf.length !== 11) {
+                showError('CPF inválido. Digite um CPF válido.');
+                return;
+            }
+
+            // Validar se o email termina com @d3estetica.com.br
+            if (!email.toLowerCase().endsWith('@vellure.cloud')) {
+                showError('Apenas emails @vellure.cloud podem acessar o painel administrativo');
+                return;
+            }
+
+            // Desabilitar botão
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Entrando...';
+            errorMessage.classList.remove('show');
+
+            try {
+                // Criar FormData
+                const formData = new FormData();
+                formData.append('email', email);
+                formData.append('cpf', cpf);
+                formData.append('senha', senha);
+                if (remember) {
+                    formData.append('remember', '1');
+                }
+
+                // Enviar para o backend PHP
+                const response = await fetch('/backend/admin/login-process.php', {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'include'
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    // Salvar dados do admin no localStorage
+                    if (result.user) {
+                        const userData = {
+                            id: result.user.id,
+                            nome: result.user.nome,
+                            email: result.user.email,
+                            tipo: result.user.tipo || 'admin',
+                            timestamp: Date.now()
+                        };
+                        localStorage.setItem('d3estetica_auth', JSON.stringify(userData));
+                    }
+
+                    // Salvar sessão persistente se "lembrar-me" estiver marcado
+                    if (remember) {
+                        localStorage.setItem('d3estetica_admin_remember', 'true');
+                    }
+
+                    // Login bem-sucedido - redirecionar
+                    window.location.href = '/backend/admin/index.html';
+                } else {
+                    // Mostrar erro
+                    showError(result.message || 'Email, CPF ou senha incorretos');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                showError('Erro ao conectar com o servidor. Verifique sua conexão.');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<span>Entrar</span><i class="bi bi-arrow-right"></i>';
+            }
+        });
+
+        function showError(message) {
+            errorText.textContent = message;
+            errorMessage.classList.add('show');
+        }
+
+        // Gerar avatar inicial (será atualizado após login)
+        const adminAvatar = document.getElementById('adminAvatar');
+        if (adminAvatar) {
+            adminAvatar.innerHTML = '<i class="bi bi-person-circle" style="font-size: 3rem; color: var(--accent-blue);"></i>';
+        }
+    </script>
+</body>
+
+</html>

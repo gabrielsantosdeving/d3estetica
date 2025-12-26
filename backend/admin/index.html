@@ -1,0 +1,1735 @@
+<?php
+/**
+ * ============================================
+ * PAINEL ADMINISTRATIVO - PROTEÇÃO DE ACESSO
+ * ============================================
+ * 
+ * Verifica se o usuário está autenticado como administrador.
+ * Redireciona para login se não estiver autenticado.
+ * 
+ * @package D3Estetica
+ * @file index.html
+ * @version 1.0
+ */
+
+// Iniciar sessão
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// Verificar se está autenticado como admin
+if (!isset($_SESSION['user_id']) || !isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'admin') {
+    // Verificar se há cookie de "lembrar-me"
+    if (isset($_COOKIE['remember_token'])) {
+        // Usar caminho absoluto baseado no document root para compatibilidade com Hostinger
+        $configPath = $_SERVER['DOCUMENT_ROOT'] . '/backend/config/database.php';
+        if (!file_exists($configPath)) {
+            // Fallback: tentar caminho relativo
+            $configPath = __DIR__ . '/../config/database.php';
+        }
+        
+        if (file_exists($configPath)) {
+            require_once $configPath;
+            
+            try {
+                if (function_exists('getDB')) {
+                    $conn = getDB();
+                    if ($conn) {
+                        $token = $_COOKIE['remember_token'];
+                        
+                        // Buscar token no banco e verificar
+                        $stmt = $conn->prepare("
+                            SELECT at.admin_id, at.token_hash, a.id, a.nome, a.email, a.status 
+                            FROM admin_tokens at
+                            INNER JOIN administradores a ON at.admin_id = a.id
+                            WHERE at.expires_at > NOW() AND a.status = 'ativo'
+                            ORDER BY at.created_at DESC
+                        ");
+                        
+                        if ($stmt) {
+                            $stmt->execute();
+                            $tokens = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                            
+                            // Verificar se algum token corresponde
+                            foreach ($tokens as $token_row) {
+                                if (password_verify($token, $token_row['token_hash'])) {
+                                    // Token válido - restaurar sessão
+                                    $_SESSION['user_id'] = $token_row['id'];
+                                    $_SESSION['user_type'] = 'admin';
+                                    $_SESSION['user_name'] = $token_row['nome'];
+                                    $_SESSION['user_email'] = $token_row['email'];
+                                    // Sessão restaurada, continuar
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception $e) {
+                error_log('Erro ao verificar token: ' . $e->getMessage());
+            }
+        }
+    }
+    
+    // Se ainda não estiver autenticado após verificar token, redirecionar
+    if (!isset($_SESSION['user_id']) || !isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'admin') {
+        header('Location: /backend/admin/login.html');
+        exit();
+    }
+}
+
+// Buscar dados atualizados do administrador do banco (se possível)
+try {
+    $configPath = $_SERVER['DOCUMENT_ROOT'] . '/backend/config/database.php';
+    if (!file_exists($configPath)) {
+        $configPath = __DIR__ . '/../config/database.php';
+    }
+    
+    if (file_exists($configPath)) {
+        require_once $configPath;
+        
+        if (function_exists('getDB')) {
+            $conn = getDB();
+            if ($conn && isset($_SESSION['user_id'])) {
+                $stmt = $conn->prepare("SELECT id, nome, email, cpf, status FROM administradores WHERE id = ? AND status = 'ativo'");
+                if ($stmt) {
+                    $stmt->execute([$_SESSION['user_id']]);
+                    $adminData = $stmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($adminData) {
+                        // Atualizar sessão com dados do banco
+                        $_SESSION['user_name'] = $adminData['nome'];
+                        $_SESSION['user_email'] = $adminData['email'];
+                        $_SESSION['user_cpf'] = $adminData['cpf'] ?? '';
+                    } else {
+                        // Admin não encontrado ou inativo - redirecionar
+                        session_destroy();
+                        header('Location: /backend/admin/login.html');
+                        exit();
+                    }
+                }
+            }
+        }
+    }
+} catch (Exception $e) {
+    error_log('Erro ao buscar dados do admin: ' . $e->getMessage());
+    // Em caso de erro, não bloquear o acesso, mas logar o erro
+}
+?>
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D3 Estética Dashboard</title>
+    <link rel="icon" href="/frontend/assets/d3logohead.png" type="image/x-icon" />  
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css">
+
+    <!-- Chart.js para gráficos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <!-- CSS do Dashboard -->
+    <link rel="stylesheet" href="/backend/admin/dashboard.css">
+    <!-- Fallback caso o CSS não carregue -->
+    <link rel="stylesheet" href="dashboard.css">
+
+    <!-- Garantir que as variáveis CSS estejam definidas mesmo se dashboard.css não carregar -->
+    <style>
+        :root {
+            /* Cores do tema claro verde */
+            --bg-primary: #f4f7f5;
+            --bg-secondary: #f0fdf4;
+            --bg-tertiary: #e8f5ec;
+            --bg-card: #ffffff;
+            --bg-hover: #d9f2df;
+
+            /* Cores de texto */
+            --text-primary: #1f2933;
+            --text-secondary: #4b5563;
+            --text-muted: #9ca3af;
+
+            --accent-blue: #16a34a;
+            --accent-green: #22c55e;
+            --accent-yellow: #f59e0b;
+            --accent-purple: #4f46e5;
+            --accent-red: #ef4444;
+
+            /* Cores de status */
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --info: #16a34a;
+
+            /* Bordas e sombras */
+            --border-color: #d1d5db;
+            --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08);
+            --shadow-md: 0 4px 6px rgba(15, 23, 42, 0.12);
+            --shadow-lg: 0 10px 20px rgba(15, 23, 42, 0.16);
+
+            /* Transições */
+            --transition: all 0.3s ease;
+        }
+
+        /* Garantir que o body tenha o estilo correto */
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg-primary, #f4f7f5);
+            color: var(--text-primary, #1f2933);
+            line-height: 1.6;
+            overflow-x: hidden;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Estilos do Kanban Board - Agendamentos */
+        .kanban-board {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            min-height: 600px;
+        }
+
+        .kanban-column {
+            background: var(--bg-secondary, #f0fdf4);
+            border-radius: 12px;
+            border: 1px solid var(--border-color, #d1d5db);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .kanban-column-header {
+            padding: 1rem 1.25rem;
+            background: var(--bg-tertiary, #e8f5ec);
+            border-bottom: 2px solid var(--border-color, #d1d5db);
+        }
+
+        .kanban-column-title {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 600;
+            color: #9c9661;
+            font-size: 0.95rem;
+        }
+
+        .kanban-column-title i {
+            font-size: 1.2rem;
+        }
+
+        .kanban-column[data-status="pendente"] .kanban-column-title i {
+            color: var(--accent-yellow, #f59e0b);
+        }
+
+        .kanban-column[data-status="confirmado"] .kanban-column-title i {
+            color: var(--accent-green, #22c55e);
+        }
+
+        .kanban-column[data-status="cancelado"] .kanban-column-title i {
+            color: var(--accent-red, #ef4444);
+        }
+
+        .kanban-count {
+            background: var(--bg-card, #ffffff);
+            color: var(--text-secondary, #4b5563);
+            padding: 0.25rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-left: auto;
+        }
+
+        .kanban-column-body {
+            flex: 1;
+            padding: 1rem;
+            overflow-y: auto;
+            min-height: 500px;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .kanban-card {
+            background: #ffffff;
+            border: 1px solid var(--border-color, #d1d5db);
+            border-radius: 10px;
+            padding: 1rem;
+            cursor: move;
+            transition: all 0.3s ease;
+            box-shadow: var(--shadow-sm, 0 1px 3px rgba(15, 23, 42, 0.08));
+            position: relative;
+        }
+
+        .kanban-card:hover {
+            box-shadow: var(--shadow-md, 0 4px 6px rgba(15, 23, 42, 0.12));
+            transform: translateY(-2px);
+        }
+
+        .kanban-card.dragging {
+            opacity: 0.5;
+            transform: rotate(5deg);
+        }
+
+        .kanban-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid var(--border-color, #d1d5db);
+        }
+
+        .kanban-card-id {
+            font-size: 0.75rem;
+            color: var(--text-muted, #9ca3af);
+            font-weight: 600;
+        }
+
+        .kanban-card-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .kanban-card-action-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary, #4b5563);
+            cursor: pointer;
+            padding: 0.25rem;
+            border-radius: 4px;
+            transition: var(--transition, all 0.3s ease);
+            font-size: 0.9rem;
+        }
+
+        .kanban-card-action-btn:hover {
+            background: var(--bg-hover, #d9f2df);
+            color: var(--accent-blue, #16a34a);
+        }
+
+        .kanban-card-body {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .kanban-card-field {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .kanban-card-field i {
+            color: var(--text-muted, #9ca3af);
+            font-size: 0.85rem;
+            width: 16px;
+        }
+
+        .kanban-card-field strong {
+            color: var(--text-primary, #1f2933);
+            min-width: 80px;
+            font-size: 0.85rem;
+        }
+
+        .kanban-card-field span {
+            color: var(--text-secondary, #4b5563);
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 100%;
+        }
+
+        /* Permitir quebra de linha apenas para observações */
+        .kanban-card-field.observacoes span {
+            white-space: normal;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .kanban-card-date {
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid var(--border-color, #d1d5db);
+            font-size: 0.8rem;
+            color: var(--text-muted, #9ca3af);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .kanban-card-date i {
+            font-size: 0.85rem;
+        }
+
+        .kanban-empty-state {
+            text-align: center;
+            padding: 2rem 1rem;
+            color: var(--text-muted, #9ca3af);
+            font-size: 0.9rem;
+        }
+
+        .kanban-empty-state i {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            opacity: 0.5;
+        }
+
+        /* Sidebar de Formulários - Estilo WhatsApp */
+        .formularios-sidebar-list {
+            scrollbar-width: thin;
+            scrollbar-color: var(--border-color, #e0e0e0) transparent;
+        }
+
+        .formularios-sidebar-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .formularios-sidebar-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .formularios-sidebar-list::-webkit-scrollbar-thumb {
+            background: var(--border-color, #e0e0e0);
+            border-radius: 3px;
+        }
+
+        .formulario-item {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color, #e0e0e0);
+            cursor: pointer;
+            transition: background 0.2s;
+            gap: 1rem;
+        }
+
+        .formulario-item:hover {
+            background: var(--bg-hover, #f5f5f5);
+        }
+
+        .formulario-item.active {
+            background: var(--bg-tertiary, #e8f5ec);
+            border-left: 3px solid var(--accent-blue, #16a34a);
+        }
+
+        .formulario-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent-blue, #16a34a), #0d9488);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 1.2rem;
+            flex-shrink: 0;
+        }
+
+        .formulario-item-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .formulario-item-nome {
+            font-size: 1rem;
+            font-weight: 500;
+            color: var(--text-primary, #1f2933);
+            margin: 0 0 0.25rem 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .formulario-item-meta {
+            font-size: 0.85rem;
+            color: var(--text-muted, #9ca3af);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .formulario-item-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            align-items: flex-end;
+        }
+
+        .btn-analisar {
+            padding: 0.5rem 1rem;
+            background: var(--accent-blue, #16a34a);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn-analisar:hover {
+            background: #0d9488;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(22, 163, 74, 0.3);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-left img {
+            height: 42px;
+            width: auto;
+            object-fit: contain;
+        }
+
+        .header-left h1 {
+            font-size: 1.6rem;
+            font-weight: 700;
+            letter-spacing: 2px;
+            color: #9c9661;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        /* Área de Conversa - Estilo WhatsApp */
+        .formulario-conversa-area {
+            scrollbar-width: thin;
+            scrollbar-color: var(--border-color, #e0e0e0) transparent;
+        }
+
+        .formulario-conversa-area::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .formulario-conversa-area::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .formulario-conversa-area::-webkit-scrollbar-thumb {
+            background: var(--border-color, #e0e0e0);
+            border-radius: 3px;
+        }
+
+        .conversa-message {
+            margin-bottom: 1rem;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .conversa-message.received {
+            align-items: flex-start;
+        }
+
+        .conversa-message-bubble {
+            max-width: 70%;
+            padding: 0.75rem 1rem;
+            border-radius: 12px;
+            word-wrap: break-word;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+
+        .conversa-message.received .conversa-message-bubble {
+            background: #ffffff;
+            border-top-left-radius: 4px;
+        }
+
+        .conversa-message-label {
+            font-size: 0.75rem;
+            color: var(--text-muted, #9ca3af);
+            margin-bottom: 0.25rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .conversa-message-value {
+            font-size: 0.95rem;
+            color: var(--text-primary, #1f2933);
+            line-height: 1.5;
+        }
+
+        .conversa-message-value strong {
+            color: var(--accent-blue, #16a34a);
+        }
+
+        .conversa-message-time {
+            font-size: 0.7rem;
+            color: var(--text-muted, #9ca3af);
+            margin-top: 0.25rem;
+            padding-left: 0.5rem;
+        }
+
+        .back-to-list-btn:hover {
+            background: var(--bg-hover, #f5f5f5) !important;
+            border-radius: 50%;
+        }
+
+        /* Responsividade */
+        @media (max-width: 1200px) {
+            .formularios-sidebar-list {
+                width: 300px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .card-body {
+                flex-direction: column !important;
+            }
+
+            .formularios-sidebar-list {
+                width: 100% !important;
+                height: 300px !important;
+            }
+
+            .formulario-conversa-area {
+                height: calc(100vh - 600px) !important;
+            }
+
+            .back-to-list-btn {
+                display: block !important;
+            }
+        }
+
+        /* Responsive Kanban */
+        @media (max-width: 1200px) {
+            .kanban-board {
+                grid-template-columns: 1fr;
+            }
+
+            .kanban-column-body {
+                min-height: 300px;
+                max-height: 400px;
+            }
+        }
+
+        /* Drag and Drop Styles */
+        .kanban-column-body.drag-over {
+            background: rgba(34, 197, 94, 0.1);
+            border: 2px dashed var(--accent-green, #22c55e);
+        }
+
+        /* Autocomplete de Bairros */
+        .autocomplete-items {
+            position: absolute;
+            border: 1px solid var(--border-color, #d1d5db);
+            border-bottom: none;
+            border-top: none;
+            z-index: 99;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: #ffffff;
+            max-height: 200px;
+            overflow-y: auto;
+            border-radius: 0 0 8px 8px;
+            box-shadow: var(--shadow-md, 0 4px 6px rgba(15, 23, 42, 0.12));
+        }
+
+        .autocomplete-items div {
+            padding: 10px;
+            cursor: pointer;
+            background-color: #ffffff;
+            border-bottom: 1px solid var(--border-color, #d1d5db);
+        }
+
+        .autocomplete-items div:hover {
+            background-color: var(--bg-hover, #d9f2df);
+        }
+
+        .autocomplete-active {
+            background-color: var(--accent-blue, #16a34a) !important;
+            color: #ffffff;
+        }
+
+        .form-group-modal {
+            position: relative;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- ============================================
+         HEADER / TOPBAR
+         ============================================ -->
+    <header class="dashboard-header">
+        <div class="header-left">
+            <img src="/frontend/assets/d3logohead.png" alt="Vellure Logo">
+        </div>
+
+        <div class="header-center">
+
+        </div>
+        <div class="header-right">
+            <button class="icon-btn theme-toggle" id="themeToggle" title="Alternar tema">
+                <i class="bi bi-sun"></i>
+            </button>
+        </div>
+    </header>
+
+    <div class="dashboard-container">
+        <!-- ============================================
+             SIDEBAR NAVIGATION
+             ============================================ -->
+        <aside class="sidebar">
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-page="dashboard">
+                    <i class="bi bi-speedometer2"></i>
+                    <span>Dashboard <i class="bi bi-chevron-right"></i></span>
+                </a>
+                <a href="#" class="nav-item" data-page="pedidos">
+                    <i class="bi bi-file-text"></i>
+                    <span>Formulário <i class="bi bi-chevron-right"></i></span>
+                </a>
+                <a href="#" class="nav-item" data-page="agendamentos">
+                    <i class="bi bi-calendar-check"></i>
+                    <span>Agendamentos <i class="bi bi-chevron-right"></i></span>
+                </a>
+                <a href="#" class="nav-item" data-page="relatorios">
+                    <i class="bi bi-bar-chart"></i>
+                    <span>Relatórios <i class="bi bi-chevron-right"></i></span>
+                </a>
+                <a href="#" class="nav-item" data-page="documentos">
+                    <i class="bi bi-file-text"></i>
+                    <span>Documentos <i class="bi bi-chevron-right"></i></span>
+                </a>
+                <a href="#" class="nav-item" data-page="servicos">
+                    <i class="bi bi-bag-check"></i>
+                    <span>Serviços <i class="bi bi-chevron-right"></i></span>
+                </a>
+            </nav>
+
+            <div class="sidebar-divider"></div>
+
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item" data-page="notificacoes">
+                    <i class="bi bi-bell"></i>
+                    <span>Notificações <i class="bi bi-chevron-right"></i></span>
+                </a>
+                <a href="#" class="nav-item" data-page="configuracoes">
+                    <i class="bi bi-gear"></i>
+                    <span>Configurações <i class="bi bi-chevron-right"></i></span>
+                </a>
+                <a href="#" class="nav-item" data-page="ajuda">
+                    <i class="bi bi-question-circle"></i>
+                    <span>Ajuda <i class="bi bi-chevron-right"></i></span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-profile">
+                    <div class="user-avatar">
+                        <?php 
+                        $adminName = isset($_SESSION['user_name']) ? $_SESSION['user_name'] : 'Admin';
+                        $avatarUrl = 'https://ui-avatars.com/api/?name=' . urlencode($adminName) . '&background=4299e1&color=fff&size=128&bold=true';
+                        ?>
+                        <img src="<?php echo htmlspecialchars($avatarUrl); ?>"
+                            alt="<?php echo htmlspecialchars($adminName); ?>">
+                    </div>
+                    <div class="user-info">
+                        <div class="user-name">
+                            <?php echo htmlspecialchars(isset($_SESSION['user_name']) ? $_SESSION['user_name'] : 'Admin User'); ?>
+                        </div>
+                        <div class="user-email">
+                            <?php echo htmlspecialchars(isset($_SESSION['user_email']) ? $_SESSION['user_email'] : 'admin@example.com'); ?>
+                        </div>
+                    </div>
+                    <button class="profile-btn" id="profileBtn" title="Meu Perfil">
+                        <i class="bi bi-person-circle"></i>
+                    </button>
+                    <button class="logout-btn" title="Sair">
+                        <i class="bi bi-box-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ============================================
+             MAIN CONTENT AREA
+             ============================================ -->
+        <main class="main-content">
+            <!-- Dashboard Header -->
+            <div class="content-header">
+                <div>
+                    <h2 class="page-title">Dashboard</h2>
+                    <p class="page-subtitle">Bem-vindo de volta! Aqui está um resumo da sua plataforma.</p>
+                </div>
+            </div>
+
+            <!-- Metrics Cards -->
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-content">
+                        <div class="metric-info">
+                            <h3 class="metric-label">Total de Usuários</h3>
+                            <p class="metric-value" id="totalUsuarios">0,00</p>
+                            <p class="metric-change positive">
+                                <i class="bi bi-arrow-up"></i>
+                                <span id="usuariosChange">+0% vs último mês</span>
+                            </p>
+                        </div>
+                        <div class="metric-icon usuarios">
+                            <i class="bi bi-people-fill"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-content">
+                        <div class="metric-info">
+                            <h3 class="metric-label">Receita Total</h3>
+                            <p class="metric-value" id="receitaTotal">R$0,00</p>
+                            <p class="metric-change positive">
+                                <i class="bi bi-arrow-up"></i>
+                                <span id="receitaChange">+0% vs último mês</span>
+                            </p>
+                        </div>
+                        <div class="metric-icon receita">
+                            <i class="bi bi-currency-dollar"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-content">
+                        <div class="metric-info">
+                            <h3 class="metric-label">Pedidos</h3>
+                            <p class="metric-value" id="totalPedidos">0,00</p>
+                            <p class="metric-change negative">
+                                <i class="bi bi-arrow-down"></i>
+                                <span id="pedidosChange">0% vs último mês</span>
+                            </p>
+                        </div>
+                        <div class="metric-icon pedidos">
+                            <i class="bi bi-cart-fill"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-content">
+                        <div class="metric-info">
+                            <h3 class="metric-label">Taxa de Conversão</h3>
+                            <p class="metric-value" id="taxaConversao">0%</p>
+                            <p class="metric-change positive">
+                                <i class="bi bi-arrow-up"></i>
+                                <span id="conversaoChange">+0.5% vs último mês</span>
+                            </p>
+                        </div>
+                        <div class="metric-icon conversao">
+                            <i class="bi bi-graph-up"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts and Activity Section -->
+            <div class="dashboard-grid">
+                <!-- Monthly Revenue Chart -->
+                <div class="chart-card">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">Receita Mensal</h3>
+                            <p class="card-subtitle">Visão geral do faturamento ao longo do ano</p>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="revenueChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Recent Activity -->
+                <div class="activity-card">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">Atividade Recente</h3>
+                            <p class="card-subtitle">Últimas ações no sistema</p>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <ul class="activity-list" id="activityList">
+                            <!-- Activities will be loaded here -->
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Users Section -->
+            <div class="recent-users-card">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">Usuários Recentes</h3>
+                        <p class="card-subtitle">Novos usuários registrados recentemente</p>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="users-table-wrapper">
+                        <table class="users-table" id="recentUsersTable">
+                            <thead>
+                                <tr>
+                                    <th>Nome</th>
+                                    <th>Email</th>
+                                    <th>Data de Registro</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recentUsersBody">
+                                <!-- Users will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Usuários Section -->
+            <div class="admin-section" id="usuariosSection" style="display: none;">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">Gerenciar Usuários</h3>
+                        <p class="card-subtitle">Visualize e gerencie todos os usuários do sistema</p>
+                    </div>
+                    <button class="btn-add-service" id="btnAddUsuario">
+                        <i class="bi bi-person-plus"></i> Adicionar Usuário
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="admin-table-wrapper">
+                        <table class="admin-table" id="usuariosTable">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Nome</th>
+                                    <th>Email</th>
+                                    <th>Tipo</th>
+                                    <th>Status</th>
+                                    <th>Data Registro</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usuariosBody">
+                                <tr>
+                                    <td colspan="7" style="text-align: center; padding: 2rem;">Carregando usuários...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Formulário Section -->
+            <div class="admin-section" id="pedidosSection" style="display: none;">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">Formulário</h3>
+                        <p class="card-subtitle">Visualize e analise os formulários enviados</p>
+                    </div>
+                    <div class="filter-buttons">
+                        <button class="filter-btn active" data-filter="all">Todos</button>
+                        <button class="filter-btn" data-filter="pendente">Pendentes</button>
+                        <button class="filter-btn" data-filter="confirmado">Confirmados</button>
+                        <button class="filter-btn" data-filter="cancelado">Cancelados</button>
+                    </div>
+                </div>
+                <div class="card-body"
+                    style="display: flex; gap: 0; padding: 0; height: calc(100vh - 300px); min-height: 600px;">
+                    <!-- Sidebar Lista de Formulários (Estilo WhatsApp) -->
+                    <div class="formularios-sidebar-list" id="formulariosSidebarList"
+                        style="width: 350px; background: #ffffff; border-right: 1px solid #e9edef; overflow: hidden; display: flex; flex-direction: column;">
+                        <div class="formularios-list-header"
+                            style="padding: 20px 16px; background: #f0f2f5; border-bottom: 1px solid #e9edef;">
+                            <h4
+                                style="margin: 0; color: #111b21; font-size: 19px; font-weight: 500; letter-spacing: -0.3px;">
+                                Formulários</h4>
+                        </div>
+                        <div class="formularios-list-body" id="formulariosListBody"
+                            style="flex: 1; overflow-y: auto; background: #ffffff; position: relative;">
+                            <div style="text-align: center; padding: 3rem 2rem; color: #667781;">
+                                <div style="width: 50px; height: 50px; margin: 0 auto 20px; position: relative;">
+                                    <div
+                                        style="width: 50px; height: 50px; border: 3px solid #25D366; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;">
+                                    </div>
+                                </div>
+                                <p style="font-size: 14px; color: #667781; margin: 0; line-height: 1.4;">Estamos se
+                                    conectando ao banco de dados.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <style>
+                        @keyframes spin {
+                            0% {
+                                transform: rotate(0deg);
+                            }
+
+                            100% {
+                                transform: rotate(360deg);
+                            }
+                        }
+
+                        .formularios-list-body::-webkit-scrollbar {
+                            width: 6px;
+                        }
+
+                        .formularios-list-body::-webkit-scrollbar-track {
+                            background: transparent;
+                        }
+
+                        .formularios-list-body::-webkit-scrollbar-thumb {
+                            background: rgba(0, 0, 0, 0.2);
+                            border-radius: 3px;
+                        }
+
+                        .formularios-list-body::-webkit-scrollbar-thumb:hover {
+                            background: rgba(0, 0, 0, 0.3);
+                        }
+                    </style>
+
+                    <!-- Área de Conversa (Estilo WhatsApp) -->
+                    <div class="formulario-conversa-area" id="formularioConversaArea"
+                        style="flex: 1; display: flex; flex-direction: column; background: #efeae2; position: relative;">
+                        <!-- Estado Vazio -->
+                        <div class="conversa-empty-state" id="conversaEmptyState"
+                            style="display: flex; align-items: center; justify-content: center; height: 100%; flex-direction: column; color: #667781;">
+                            <div
+                                style="width: 200px; height: 200px; background: #ffffff; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                                <i class="bi bi-chat-left-text"
+                                    style="font-size: 80px; opacity: 0.2; color: #25D366;"></i>
+                            </div>
+                            <p style="font-size: 18px; font-weight: 300; margin: 0; color: #667781;">Selecione um
+                                formulário para ver as informações</p>
+                        </div>
+
+                        <!-- Header da Conversa -->
+                        <div class="conversa-header" id="conversaHeader"
+                            style="display: none; padding: 10px 16px; background: #f0f2f5; border-bottom: 1px solid #e9edef; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <div class="conversa-avatar"
+                                    style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #25D366, #128C7E); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 18px; flex-shrink: 0;">
+                                    <span id="conversaAvatarInitial">?</span>
+                                </div>
+                                <div style="flex: 1; min-width: 0;">
+                                    <h4 style="margin: 0; color: #111b21; font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
+                                        id="conversaNome">Nome</h4>
+                                    <p style="margin: 0; color: #667781; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
+                                        id="conversaInfo">Informações</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Mensagens da Conversa -->
+                        <div class="conversa-messages" id="conversaMessages"
+                            style="flex: 1; overflow-y: auto; padding: 20px 16px; display: none; background: #efeae2;">
+                            <!-- Mensagens serão inseridas aqui via JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Agendamentos Section -->
+            <div class="admin-section" id="agendamentosSection" style="display: none;">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">Gerenciar Agendamentos</h3>
+                        <p class="card-subtitle">Visualize e gerencie todos os agendamentos de avaliação gratuita</p>
+                    </div>
+                    <button class="btn-add-service" id="btnAddAgendamento">
+                        <i class="bi bi-plus-circle"></i> Adicionar Agendamento
+                    </button>
+                </div>
+                <div class="card-body" style="padding: 1.5rem;">
+                    <!-- Fluxograma Kanban -->
+                    <div class="kanban-board" id="agendamentosKanban">
+                        <!-- Coluna: Pendente -->
+                        <div class="kanban-column" data-status="pendente">
+                            <div class="kanban-column-header">
+                                <div class="kanban-column-title">
+                                    <i class="bi bi-clock-history"></i>
+                                    <span>Pendente</span>
+                                    <span class="kanban-count" id="count-pendente">0</span>
+                                </div>
+                            </div>
+                            <div class="kanban-column-body" id="kanban-pendente" ondrop="dropAgendamento(event)"
+                                ondragover="allowDrop(event)">
+                                <div class="kanban-empty-state">
+                                    <i class="bi bi-inbox"></i>
+                                    <p>Nenhum agendamento</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Coluna: Confirmado -->
+                        <div class="kanban-column" data-status="confirmado">
+                            <div class="kanban-column-header">
+                                <div class="kanban-column-title">
+                                    <i class="bi bi-check-circle"></i>
+                                    <span>Confirmado</span>
+                                    <span class="kanban-count" id="count-confirmado">0</span>
+                                </div>
+                            </div>
+                            <div class="kanban-column-body" id="kanban-confirmado" ondrop="dropAgendamento(event)"
+                                ondragover="allowDrop(event)">
+                                <div class="kanban-empty-state">
+                                    <i class="bi bi-inbox"></i>
+                                    <p>Nenhum agendamento</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Coluna: Cancelado -->
+                        <div class="kanban-column" data-status="cancelado">
+                            <div class="kanban-column-header">
+                                <div class="kanban-column-title">
+                                    <i class="bi bi-x-circle"></i>
+                                    <span>Cancelado</span>
+                                    <span class="kanban-count" id="count-cancelado">0</span>
+                                </div>
+                            </div>
+                            <div class="kanban-column-body" id="kanban-cancelado" ondrop="dropAgendamento(event)"
+                                ondragover="allowDrop(event)">
+                                <div class="kanban-empty-state">
+                                    <i class="bi bi-inbox"></i>
+                                    <p>Nenhum agendamento</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Relatórios Section -->
+            <div class="admin-section" id="relatoriosSection" style="display: none;">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">Relatórios e Estatísticas</h3>
+                        <p class="card-subtitle">Visualize relatórios detalhados do sistema</p>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="reports-grid">
+                        <div class="report-card">
+                            <h4>Usuários por Tipo</h4>
+                            <canvas id="usersChart"></canvas>
+                        </div>
+                        <div class="report-card">
+                            <h4>Agendamentos por Status</h4>
+                            <canvas id="agendamentosChart"></canvas>
+                        </div>
+                        <div class="report-card">
+                            <h4>Serviços Mais Vendidos</h4>
+                            <canvas id="servicosChart"></canvas>
+                        </div>
+                        <div class="report-card">
+                            <h4>Estatísticas Gerais</h4>
+                            <div class="stats-list" id="statsList">
+                                <!-- Stats will be loaded here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Documentos Section -->
+            <div class="admin-section" id="documentosSection" style="display: none;">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">Gerenciar Documentos</h3>
+                        <p class="card-subtitle">Visualize e gerencie documentos e candidaturas</p>
+                    </div>
+                    <div class="filter-buttons">
+                        <button class="filter-btn active" data-filter="all">Todos</button>
+                        <button class="filter-btn" data-filter="pendente">Pendentes</button>
+                        <button class="filter-btn" data-filter="aprovado">Aprovados</button>
+                        <button class="filter-btn" data-filter="rejeitado">Rejeitados</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="admin-table-wrapper">
+                        <table class="admin-table" id="documentosTable">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Nome</th>
+                                    <th>Email</th>
+                                    <th>Vaga</th>
+                                    <th>Status</th>
+                                    <th>Data</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="documentosBody">
+                                <tr>
+                                    <td colspan="7" style="text-align: center; padding: 2rem;">Carregando documentos...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Notificações Section -->
+            <div class="admin-section" id="notificacoesSection" style="display: none;">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">Notificações</h3>
+                        <p class="card-subtitle">Visualize e gerencie suas notificações</p>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="notifications-list" id="notificationsList">
+                        <!-- Notifications will be loaded here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Configurações Section -->
+            <div class="admin-section" id="configuracoesSection" style="display: none;">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">Configurações do Sistema</h3>
+                        <p class="card-subtitle">Configure as preferências do sistema</p>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="settings-grid">
+                        <div class="settings-card">
+                            <h4><i class="bi bi-bell"></i> Notificações</h4>
+                            <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="notifEmail" checked>
+                                    <span>Receber notificações por e-mail</span>
+                                </label>
+                            </div>
+                            <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="notifSistema" checked>
+                                    <span>Notificações do sistema</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="settings-card">
+                            <h4><i class="bi bi-shield-check"></i> Segurança</h4>
+                            <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="security2FA">
+                                    <span>Ativar autenticação de dois fatores (2FA)</span>
+                                </label>
+                            </div>
+                            <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="securityLogout" checked>
+                                    <span>Fazer logout automático após inatividade</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="settings-card">
+                            <h4><i class="bi bi-palette"></i> Aparência</h4>
+                            <div class="setting-item">
+                                <label>Tema</label>
+                                <select id="themeSelect">
+                                    <option value="dark">Escuro</option>
+                                    <option value="light">Claro</option>
+                                    <option value="auto">Automático</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-actions">
+                        <button class="btn-add-service" id="btnSaveSettings">
+                            <i class="bi bi-save"></i> Salvar Configurações
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ajuda Section -->
+            <div class="admin-section" id="ajudaSection" style="display: none;">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">Central de Ajuda</h3>
+                        <p class="card-subtitle">Encontre respostas para suas dúvidas</p>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="help-grid">
+                        <div class="help-card">
+                            <i class="bi bi-question-circle-fill"></i>
+                            <h4>Como adicionar um serviço?</h4>
+                            <p>Vá até a seção "Serviços" no menu lateral e clique em "Adicionar Serviço". Preencha os
+                                campos obrigatórios e salve.</p>
+                        </div>
+                        <div class="help-card">
+                            <i class="bi bi-people-fill"></i>
+                            <h4>Como gerenciar usuários?</h4>
+                            <p>Na seção "Usuários" você pode visualizar, editar e excluir usuários do sistema.</p>
+                        </div>
+                        <div class="help-card">
+                            <i class="bi bi-cart-fill"></i>
+                            <h4>Como visualizar pedidos?</h4>
+                            <p>Acesse a seção "Pedidos" para ver todos os agendamentos e pedidos. Use os filtros para
+                                encontrar o que precisa.</p>
+                        </div>
+                        <div class="help-card">
+                            <i class="bi bi-bar-chart-fill"></i>
+                            <h4>Como ver relatórios?</h4>
+                            <p>Na seção "Relatórios" você encontra gráficos e estatísticas detalhadas do sistema.</p>
+                        </div>
+                        <div class="help-card">
+                            <i class="bi bi-file-text-fill"></i>
+                            <h4>Como gerenciar candidaturas?</h4>
+                            <p>Acesse "Documentos" para visualizar e gerenciar todas as candidaturas recebidas.</p>
+                        </div>
+                        <div class="help-card">
+                            <i class="bi bi-gear-fill"></i>
+                            <h4>Como alterar minha senha?</h4>
+                            <p>Clique no ícone de perfil no canto inferior esquerdo e acesse "Meu Perfil" para alterar
+                                sua senha.</p>
+                        </div>
+                    </div>
+                    <div class="help-contact">
+                        <h4>Precisa de mais ajuda?</h4>
+                        <p>Entre em contato com o suporte técnico:</p>
+                        <div class="contact-info">
+                            <p><i class="bi bi-envelope"></i> suporte@d3estetica.com.br</p>
+                            <p><i class="bi bi-telephone"></i> (34) 0000-0000</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Section -->
+            <div class="admin-section" id="chatSection" style="display: none;">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">Chat 24 Horas</h3>
+                        <p class="card-subtitle">Atendimento ao cliente em tempo real</p>
+                    </div>
+                    <button class="btn-add-service" id="btnRefreshChat">
+                        <i class="bi bi-arrow-clockwise"></i> Atualizar
+                    </button>
+                </div>
+                <div class="card-body"
+                    style="padding: 0; height: calc(100vh - 200px); display: grid; grid-template-columns: 350px 1fr; gap: 0;">
+                    <!-- Lista de Tickets -->
+                    <div class="chat-tickets-sidebar">
+                        <div class="chat-tickets-header">
+                            <h4>Tickets</h4>
+                            <div class="chat-filters">
+                                <button class="filter-btn active" data-chat-filter="all"
+                                    onclick="filterChatTickets('all')">Todos</button>
+                                <button class="filter-btn" data-chat-filter="aberto"
+                                    onclick="filterChatTickets('aberto')">Abertos</button>
+                                <button class="filter-btn" data-chat-filter="fechado"
+                                    onclick="filterChatTickets('fechado')">Fechados</button>
+                            </div>
+                        </div>
+                        <div class="chat-tickets-list" id="chatTicketsList">
+                            <div style="padding: 1rem; text-align: center; color: var(--text-muted);">Carregando
+                                tickets...</div>
+                        </div>
+                    </div>
+
+                    <!-- Área de Mensagens -->
+                    <div class="chat-messages-area">
+                        <div id="chatMessagesArea" class="chat-messages-container">
+                            <div class="chat-empty-state">
+                                <i class="bi bi-chat-dots"
+                                    style="font-size: 3rem; color: var(--text-muted); margin-bottom: 1rem;"></i>
+                                <p style="color: var(--text-muted);">Selecione um ticket para visualizar as mensagens
+                                </p>
+                            </div>
+                        </div>
+                        <div id="chatInputArea" class="chat-input-area" style="display: none;">
+                            <div class="chat-input-wrapper" style="display: flex; gap: 10px; align-items: center;">
+                                <input type="text" id="chatMessageInput" placeholder="Digite sua mensagem..."
+                                    class="chat-input" style="flex: 1;">
+                                <button id="chatSendBtn" class="chat-send-btn">
+                                    <i class="bi bi-send"></i>
+                                </button>
+                                <button id="chatCloseBtn" class="chat-close-btn"
+                                    style="padding: 10px 15px; background: #ff9800; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                                    <i class="bi bi-x-circle"></i> Fechar Ticket
+                                </button>
+                                <button id="chatDeleteBtn" class="chat-delete-btn"
+                                    style="padding: 10px 15px; background: var(--error); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                                    <i class="bi bi-trash"></i> Deletar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Services Section -->
+            <div class="admin-section" id="servicesSection" style="display: none;">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">Gerenciar Serviços</h3>
+                        <p class="card-subtitle">Adicione, edite ou remova serviços oferecidos</p>
+                    </div>
+                    <button class="btn-add-service" id="btnAddService" onclick="openServiceModal(); return false;">
+                        <i class="bi bi-plus-circle"></i> Adicionar Serviço
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="services-table-wrapper">
+                        <table class="services-table" id="servicesTable">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Nome</th>
+                                    <th>Categoria</th>
+                                    <th>Preço</th>
+                                    <th>Status</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="servicesBody">
+                                <!-- Services will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal de Perfil -->
+    <div class="modal-overlay" id="profileModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Meu Perfil</h3>
+                <button class="modal-close" id="closeProfileModal">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            <form id="profileForm">
+                <div class="form-group-modal">
+                    <label for="profileNome">Nome Completo *</label>
+                    <input type="text" id="profileNome" name="nome" required>
+                </div>
+                <div class="form-group-modal">
+                    <label for="profileEmail">E-mail *</label>
+                    <input type="email" id="profileEmail" name="email" required>
+                </div>
+                <div class="form-group-modal">
+                    <label for="profileCPF">CPF</label>
+                    <input type="text" id="profileCPF" name="cpf" readonly>
+                </div>
+                <div class="form-divider">
+                    <h4>Alterar Senha</h4>
+                </div>
+                <div class="form-group-modal">
+                    <label for="profileSenhaAtual">Senha Atual</label>
+                    <input type="password" id="profileSenhaAtual" name="senha_atual"
+                        placeholder="Deixe em branco para não alterar">
+                </div>
+                <div class="form-group-modal">
+                    <label for="profileSenhaNova">Nova Senha</label>
+                    <input type="password" id="profileSenhaNova" name="senha_nova"
+                        placeholder="Deixe em branco para não alterar">
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-modal btn-modal-secondary"
+                        id="cancelProfileModal">Cancelar</button>
+                    <button type="submit" class="btn-modal btn-modal-primary">Salvar Alterações</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal para Adicionar/Editar Serviço -->
+    <div class="modal-overlay" id="serviceModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Adicionar Serviço</h3>
+                <button class="modal-close" id="closeServiceModal">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            <form id="serviceForm">
+                <input type="hidden" id="serviceId" name="id">
+                <div class="form-group-modal">
+                    <label for="serviceNome">Nome do Serviço *</label>
+                    <input type="text" id="serviceNome" name="nome" required>
+                </div>
+                <div class="form-group-modal">
+                    <label for="serviceCategoria">Categoria *</label>
+                    <select id="serviceCategoria" name="categoria" required>
+                        <option value="">Selecione</option>
+                        <option value="facial">Facial</option>
+                        <option value="corporal">Corporal</option>
+                        <option value="beleza">Beleza</option>
+                    </select>
+                </div>
+                <div class="form-group-modal">
+                    <label for="serviceImagem">Imagem do Serviço</label>
+                    <input type="file" id="serviceImagem" name="imagem" accept="image/*"
+                        onchange="previewServiceImage(this)">
+                    <div id="serviceImagePreview" style="margin-top: 10px; display: none;">
+                        <img id="serviceImagePreviewImg" src="" alt="Preview"
+                            style="max-width: 200px; max-height: 200px; border-radius: 8px; border: 1px solid var(--border-color);">
+                        <button type="button" onclick="removeServiceImage()"
+                            style="margin-top: 5px; padding: 5px 10px; background: var(--error); color: white; border: none; border-radius: 4px; cursor: pointer;">
+                            <i class="bi bi-trash"></i> Remover
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group-modal">
+                    <label for="serviceDescricao">Descrição *</label>
+                    <textarea id="serviceDescricao" name="descricao" rows="4" required></textarea>
+                </div>
+                <div class="form-group-modal">
+                    <label for="serviceIncluso">O que está incluso</label>
+                    <textarea id="serviceIncluso" name="o_que_esta_incluso" rows="6"
+                        placeholder="Digite cada item em uma linha, por exemplo:&#10;Avaliação personalizada&#10;Higienização completa&#10;Extração profissional&#10;Máscara calmante e nutritiva&#10;Dermolifting e massagem facial"></textarea>
+                    <small style="color: #666; font-size: 12px; display: block; margin-top: 5px;">Digite cada item em
+                        uma linha separada</small>
+                </div>
+                <div class="form-row-modal">
+                    <div class="form-group-modal">
+                        <label for="servicePreco">Preço (R$) *</label>
+                        <input type="number" id="servicePreco" name="preco" step="0.01" min="0" required>
+                    </div>
+                    <div class="form-group-modal">
+                        <label for="servicePrecoOriginal">Preço Original (R$)</label>
+                        <input type="number" id="servicePrecoOriginal" name="preco_original" step="0.01" min="0">
+                    </div>
+                </div>
+                <div class="form-group-modal">
+                    <label for="serviceStatus">Status *</label>
+                    <select id="serviceStatus" name="status" required>
+                        <option value="ativo">Ativo</option>
+                        <option value="inativo">Inativo</option>
+                    </select>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-modal btn-modal-secondary"
+                        id="cancelServiceModal">Cancelar</button>
+                    <button type="submit" class="btn-modal btn-modal-primary">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal para Adicionar/Editar Agendamento -->
+    <div class="modal-overlay" id="agendamentoModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="agendamentoModalTitle">Adicionar Agendamento</h3>
+                <button class="modal-close" id="closeAgendamentoModal">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            <form id="agendamentoForm">
+                <input type="hidden" id="agendamentoId" name="id">
+                <div class="form-group-modal">
+                    <label for="agendamentoNome">Nome Completo *</label>
+                    <input type="text" id="agendamentoNome" name="nome" required>
+                </div>
+                <div class="form-group-modal">
+                    <label for="agendamentoEmail">E-mail *</label>
+                    <input type="email" id="agendamentoEmail" name="email" required>
+                </div>
+                <div class="form-row-modal">
+                    <div class="form-group-modal">
+                        <label for="agendamentoTelefone">Telefone *</label>
+                        <input type="text" id="agendamentoTelefone" name="telefone" required
+                            placeholder="(00) 00000-0000">
+                    </div>
+                    <div class="form-group-modal">
+                        <label for="agendamentoRegiao">Região *</label>
+                        <input type="text" id="agendamentoRegiao" name="regiao" required>
+                    </div>
+                </div>
+                <div class="form-row-modal">
+                    <div class="form-group-modal">
+                        <label for="agendamentoData">Data do Agendamento</label>
+                        <input type="date" id="agendamentoData" name="data_agendamento">
+                    </div>
+                    <div class="form-group-modal">
+                        <label for="agendamentoHora">Hora do Agendamento</label>
+                        <input type="time" id="agendamentoHora" name="hora_agendamento">
+                    </div>
+                </div>
+                <div class="form-row-modal">
+                    <div class="form-group-modal">
+                        <label for="agendamentoServicoId">Serviço (Opcional)</label>
+                        <select id="agendamentoServicoId" name="servico_id">
+                            <option value="">Nenhum serviço específico</option>
+                        </select>
+                    </div>
+                    <div class="form-group-modal">
+                        <label for="agendamentoStatus">Status *</label>
+                        <select id="agendamentoStatus" name="status" required>
+                            <option value="pendente">Pendente</option>
+                            <option value="confirmado">Confirmado</option>
+                            <option value="cancelado">Cancelado</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group-modal">
+                    <label for="agendamentoObservacoes">Observações</label>
+                    <textarea id="agendamentoObservacoes" name="observacoes" rows="4"
+                        placeholder="Observações adicionais sobre o agendamento..."></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-modal btn-modal-secondary"
+                        id="cancelAgendamentoModal">Cancelar</button>
+                    <button type="submit" class="btn-modal btn-modal-primary">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <script>
+        // Verificar se o usuário está autenticado como admin
+        (function () {
+            // Sempre verificar via API para garantir que a sessão está válida
+            fetch('/backend/api/check-admin-session.php', {
+                method: 'GET',
+                credentials: 'include'
+            })
+                .then(response => {
+                    // Verificar se a resposta é JSON antes de fazer parse
+                    const contentType = response.headers.get('content-type') || '';
+
+                    if (!response.ok) {
+                        // Se for 403 ou outro erro, verificar se é JSON
+                        if (contentType.includes('application/json')) {
+                            return response.json().then(data => {
+                                throw new Error(data.message || 'Erro na resposta do servidor');
+                            });
+                        } else {
+                            // Se não for JSON, provavelmente é uma página de erro HTML
+                            console.warn('⚠️ Resposta não-JSON do check-admin-session:', response.status, response.statusText);
+                            // Não redirecionar automaticamente em caso de 403 (pode ser problema de permissões)
+                            if (response.status === 401 || response.status === 403) {
+                                // Apenas avisar, não bloquear
+                                console.warn('⚠️ Acesso negado ou não autenticado. Continuando...');
+                            }
+                            return null; // Retornar null para não processar
+                        }
+                    }
+
+                    // Verificar se é JSON antes de fazer parse
+                    if (contentType.includes('application/json')) {
+                        return response.json();
+                    } else {
+                        console.warn('⚠️ Resposta não-JSON recebida');
+                        return null;
+                    }
+                })
+                .then(data => {
+                    // Se data for null, não processar
+                    if (!data) {
+                        return;
+                    }
+
+                    if (!data.authenticated || data.user_type !== 'admin') {
+                        // Não está autenticado - redirecionar para login
+                        console.log('Usuário não autenticado como admin. Redirecionando...');
+                        window.location.href = '/backend/admin/login.html';
+                    } else {
+                        // Usuário autenticado - salvar dados no localStorage
+                        if (data.user) {
+                            localStorage.setItem('d3estetica_auth', JSON.stringify({
+                                id: data.user.id,
+                                nome: data.user.nome,
+                                email: data.user.email,
+                                tipo: 'admin',
+                                timestamp: Date.now()
+                            }));
+                        }
+                    }
+                })
+                .catch(error => {
+                    // Não logar como erro crítico se for apenas 403 (problema de permissões)
+                    if (error.message && error.message.includes('403')) {
+                        console.warn('⚠️ Acesso negado ao verificar sessão (pode ser problema de permissões):', error.message);
+                    } else {
+                        console.warn('⚠️ Erro ao verificar sessão (não crítico):', error.message || error);
+                    }
+
+                    // Em caso de erro, verificar localStorage como fallback
+                    const authData = localStorage.getItem('d3estetica_auth');
+                    if (!authData) {
+                        // Não redirecionar automaticamente se for problema de permissões
+                        // Apenas avisar
+                        console.warn('⚠️ Nenhuma sessão encontrada. Continuando...');
+                    } else {
+                        try {
+                            const user = JSON.parse(authData);
+                            if (!user.tipo || user.tipo !== 'admin') {
+                                window.location.href = '/backend/admin/login.html';
+                            }
+                        } catch (e) {
+                            window.location.href = '/backend/admin/login.html';
+                        }
+                    }
+                });
+        })();
+    </script>
+    <!-- JavaScript -->
+    <!-- Verificação de autenticação (fallback caso PHP não funcione) -->
+    <script src="/backend/admin/dashboard.js"></script>
+    <script>
+document.addEventListener('DOMContentLoaded', function() {
+    const navItems = document.querySelectorAll('.nav-item');
+    const sections = document.querySelectorAll('.admin-section');
+    const mainDashboard = document.querySelector('.metrics-grid').parentElement; // Área principal do dashboard
+
+    // Função para esconder tudo
+    function hideAllSections() {
+        // Esconde as seções extras
+        sections.forEach(section => section.style.display = 'none');
+        
+        // Esconde o conteúdo inicial do Dashboard (Métricas, Gráficos, etc)
+        const dashboardElements = document.querySelectorAll('.metrics-grid, .dashboard-grid, .recent-users-card, .content-header');
+        dashboardElements.forEach(el => el.style.display = 'none');
+        
+        // Remove classe ativa de todos os menus
+        navItems.forEach(item => item.classList.remove('active'));
+    }
+
+    navItems.forEach(item => {
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
+            const page = this.getAttribute('data-page');
+            
+            hideAllSections();
+            this.classList.add('active');
+
+            if (page === 'dashboard') {
+                // Se for dashboard, mostra os elementos iniciais
+                document.querySelectorAll('.metrics-grid, .dashboard-grid, .recent-users-card, .content-header').forEach(el => {
+                    el.style.display = el.classList.contains('metrics-grid') ? 'grid' : 
+                               el.classList.contains('dashboard-grid') ? 'grid' : 'block';
+                });
+                document.querySelector('.page-title').textContent = "Dashboard";
+            } else {
+                // Para outras páginas, procura a seção com ID correspondente (ex: pedidosSection)
+                const targetSection = document.getElementById(page + 'Section');
+                if (targetSection) {
+                    targetSection.style.display = 'block';
+                    
+                    // Ajusta o título da página se necessário
+                    const title = targetSection.querySelector('.card-title')?.textContent;
+                    if (title) document.querySelector('.page-title').textContent = title;
+                }
+            }
+        });
+    });
+});
+</script>
+</body>
+
+</html>

@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/frontend/assets/d3logohead.png" type="image/x-icon" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap">
+    <link rel="stylesheet" href="/frontend/style/admin.css">
+    <link rel="stylesheet" href="/frontend/style/anamnese.css">
+    <title>Painel da Doutora | D3 Estética</title>
+</head>
+<body>
+    <!-- Sidebar -->
+    <aside class="admin-sidebar" id="adminSidebar">
+        <div class="sidebar-header">
+            <img src="/frontend/assets/logod3.png" alt="D3 Estética" class="sidebar-logo">
+            <h2>Painel Dr.</h2>
+        </div>
+        <nav class="sidebar-nav">
+            <a href="#dashboard" class="nav-item active" data-page="dashboard">
+                <i class="bi bi-speedometer2"></i>
+                <span>Dashboard</span>
+            </a>
+            <a href="#anamnese" class="nav-item" data-page="anamnese">
+                <i class="bi bi-file-earmark-medical"></i>
+                <span>Fichas Anamnese</span>
+            </a>
+            <a href="#servicos" class="nav-item" data-page="servicos">
+                <i class="bi bi-scissors"></i>
+                <span>Serviços</span>
+            </a>
+            <a href="#promocoes" class="nav-item" data-page="promocoes">
+                <i class="bi bi-tag"></i>
+                <span>Promoções</span>
+            </a>
+            <a href="#planos-vip" class="nav-item" data-page="planos-vip">
+                <i class="bi bi-star"></i>
+                <span>Planos VIP</span>
+            </a>
+            <a href="#blog" class="nav-item" data-page="blog">
+                <i class="bi bi-journal-text"></i>
+                <span>Blog</span>
+            </a>
+        </nav>
+        <div class="sidebar-footer">
+            <a href="/backend/doutora/logout.php" class="logout-btn">
+                <i class="bi bi-box-arrow-right"></i>
+                <span>Sair</span>
+            </a>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="admin-main">
+        <header class="admin-header">
+            <div class="header-left">
+                <button class="sidebar-toggle" id="sidebarToggle">
+                    <i class="bi bi-list"></i>
+                </button>
+                <h1 id="pageTitle">Dashboard</h1>
+            </div>
+            <div class="header-right">
+                <span id="doutoraName">Dr.</span>
+                <div class="admin-avatar">
+                    <i class="bi bi-heart-pulse"></i>
+                </div>
+            </div>
+        </header>
+
+        <!-- Dashboard -->
+        <div class="page-content active" id="page-dashboard">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: #e91e63;">
+                        <i class="bi bi-file-earmark-medical"></i>
+                    </div>
+                    <div class="stat-info">
+                        <h3 id="statAnamneses">0</h3>
+                        <p>Fichas Anamnese</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: #a0965e;">
+                        <i class="bi bi-scissors"></i>
+                    </div>
+                    <div class="stat-info">
+                        <h3 id="statServicos">0</h3>
+                        <p>Serviços</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: #d4af37;">
+                        <i class="bi bi-tag"></i>
+                    </div>
+                    <div class="stat-info">
+                        <h3 id="statPromocoes">0</h3>
+                        <p>Promoções</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: #2c3e50;">
+                        <i class="bi bi-journal-text"></i>
+                    </div>
+                    <div class="stat-info">
+                        <h3 id="statBlog">0</h3>
+                        <p>Posts do Blog</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Fichas Anamnese -->
+        <div class="page-content" id="page-anamnese">
+            <div class="page-header">
+                <h2>Gerenciar Fichas de Anamnese</h2>
+                <button class="btn-primary" onclick="abrirModalAnamnese()">
+                    <i class="bi bi-plus-circle"></i> Nova Ficha
+                </button>
+            </div>
+            <div class="table-container">
+                <table class="data-table" id="anamneseTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nome do Paciente</th>
+                            <th>Tipo</th>
+                            <th>Data do Procedimento</th>
+                            <th>Data de Criação</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="anamneseBody">
+                        <tr>
+                            <td colspan="6" class="loading">Carregando...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Serviços -->
+        <div class="page-content" id="page-servicos">
+            <div class="page-header">
+                <h2>Gerenciar Serviços</h2>
+                <button class="btn-primary" onclick="abrirModalServico()">
+                    <i class="bi bi-plus-circle"></i> Novo Serviço
+                </button>
+            </div>
+            <div class="table-container">
+                <table class="data-table" id="servicosTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nome</th>
+                            <th>Categoria</th>
+                            <th>Preço</th>
+                            <th>Preço Original</th>
+                            <th>Vendidos</th>
+                            <th>Status</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="servicosBody">
+                        <tr>
+                            <td colspan="8" class="loading">Carregando...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Promoções -->
+        <div class="page-content" id="page-promocoes">
+            <div class="page-header">
+                <h2>Gerenciar Promoções</h2>
+                <button class="btn-primary" onclick="abrirModalPromocao()">
+                    <i class="bi bi-plus-circle"></i> Nova Promoção
+                </button>
+            </div>
+            <div class="table-container">
+                <table class="data-table" id="promocoesTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Título</th>
+                            <th>Desconto</th>
+                            <th>Validade</th>
+                            <th>Status</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="promocoesBody">
+                        <tr>
+                            <td colspan="6" class="loading">Carregando...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Planos VIP -->
+        <div class="page-content" id="page-planos-vip">
+            <div class="page-header">
+                <h2>Gerenciar Planos VIP</h2>
+                <button class="btn-primary" onclick="abrirModalPlanoVIP()">
+                    <i class="bi bi-plus-circle"></i> Novo Plano
+                </button>
+            </div>
+            <div class="table-container">
+                <table class="data-table" id="planosVipTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nome</th>
+                            <th>Tipo</th>
+                            <th>Preço</th>
+                            <th>Desconto</th>
+                            <th>Destaque</th>
+                            <th>Status</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="planosVipBody">
+                        <tr>
+                            <td colspan="8" class="loading">Carregando...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Blog -->
+        <div class="page-content" id="page-blog">
+            <div class="page-header">
+                <h2>Gerenciar Blog</h2>
+                <button class="btn-primary" onclick="abrirModalBlog()">
+                    <i class="bi bi-plus-circle"></i> Novo Post
+                </button>
+            </div>
+            <div class="table-container">
+                <table class="data-table" id="blogTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Título</th>
+                            <th>Autor</th>
+                            <th>Status</th>
+                            <th>Visualizações</th>
+                            <th>Data</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="blogBody">
+                        <tr>
+                            <td colspan="7" class="loading">Carregando...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Container para modais -->
+    <div id="modalsContainer"></div>
+
+    <!-- Scripts -->
+    <script src="/frontend/js/api.js"></script>
+    <script src="/frontend/js/admin-modals.js"></script>
+    <script src="/frontend/js/anamnese.js"></script>
+    <script src="/frontend/js/doutora.js"></script>
+    <script>
+        // Esconder a URL real e mostrar uma URL amigável
+        if (window.history && window.history.replaceState) {
+            window.history.replaceState(null, null, '/doutora');
+        }
+    </script>
+</body>
+</html>
+
